@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>这不是吸烟区 · 原型</title>
+<style>
+  :root{
+    --bg:#171210;
+    --panel:#f3e6d2;
+    --panel-2:#e8d5b8;
+    --ink:#3a2a1d;
+    --ink-soft:#7a6150;
+    --amber:#e39a4f;
+    --amber-deep:#c8792f;
+    --teal:#6c9b95;
+    --danger:#c9553b;
+    --ok:#7f9b62;
+    --line:rgba(58,42,29,.18);
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Noto Sans SC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);}
+  #app{position:fixed;inset:0;}
+  #app canvas{display:block;width:100%;height:100%;}
+
+  /* ---------- 通用面板 ---------- */
+  .card{
+    background:linear-gradient(180deg,rgba(255,248,238,.96),rgba(238,224,205,.96));
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 10px 26px rgba(20,12,6,.35), inset 0 1px 0 rgba(255,255,255,.6);
+    backdrop-filter:blur(6px);
+  }
+  .label-mini{font-size:11px;letter-spacing:.14em;color:var(--ink-soft);text-transform:uppercase;}
+
+  /* ---------- 顶部 HUD ---------- */
+  #hud-top{
+    position:absolute;top:14px;left:14px;right:14px;
+    display:flex;gap:12px;align-items:flex-start;
+    pointer-events:none;
+  }
+  #level-card{padding:10px 14px 11px;min-width:230px;}
+  #level-card h1{margin:2px 0 4px;font-size:16px;letter-spacing:.02em;}
+  #level-card .sub{font-size:12px;color:var(--ink-soft);line-height:1.5;}
+  #level-objectives{margin-top:8px;display:flex;flex-direction:column;gap:4px;}
+  .obj{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-soft);transition:.25s;}
+  .obj .dot{width:14px;height:14px;border-radius:5px;border:1.5px solid var(--line);display:grid;place-items:center;font-size:9px;color:transparent;background:rgba(255,255,255,.5);}
+  .obj.done{color:var(--ok);}
+  .obj.done .dot{background:var(--ok);border-color:var(--ok);color:#fff;}
+
+  #status-card{padding:11px 14px;display:flex;gap:16px;align-items:center;margin-left:auto;pointer-events:none;}
+  .stat{display:flex;flex-direction:column;gap:4px;min-width:74px;}
+  .stat .v{font-size:15px;font-weight:600;}
+  #health-wrap{width:210px;}
+  #health-track{height:15px;border-radius:8px;background:rgba(58,42,29,.16);overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(0,0,0,.2);}
+  #health-fill{height:100%;width:100%;border-radius:8px;background:linear-gradient(90deg,#8fb06a,#c9d47a);transition:width .12s linear,background .3s;}
+  #health-fill.warn{background:linear-gradient(90deg,#dfa24f,#f0c46a);}
+  #health-fill.danger{background:linear-gradient(90deg,#c9553b,#e0765c);}
+  #health-num{position:absolute;right:7px;top:0;line-height:15px;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);}
+  #exposure-tag{font-size:11px;color:var(--ink-soft);}
+  #anger-wrap{width:150px;}
+  #anger-track{height:15px;border-radius:8px;background:rgba(58,42,29,.16);overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(0,0,0,.2);}
+  #anger-fill{height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#8fa9a3,#b5c3b4);transition:width .12s linear,background .3s;}
+  #anger-fill.warn{background:linear-gradient(90deg,#dfa24f,#f0c46a);}
+  #anger-fill.danger{background:linear-gradient(90deg,#c9553b,#e0765c);}
+  #anger-num{position:absolute;right:7px;top:0;line-height:15px;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);}
+  #anger-tag{font-size:11px;color:var(--ink-soft);}
+
+  /* ---------- 底部操作栏 ---------- */
+  #hud-bottom{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    display:flex;gap:10px;align-items:center;padding:9px 12px;
+  }
+  .act{
+    display:flex;align-items:center;gap:7px;position:relative;
+    padding:7px 11px;border-radius:10px;font-size:12.5px;cursor:pointer;
+    border:1px solid var(--line);background:rgba(255,255,255,.55);color:var(--ink);
+    transition:.18s;user-select:none;white-space:nowrap;
+  }
+  .act:hover{background:#fff;transform:translateY(-1px);}
+  .act.active{background:var(--amber);border-color:var(--amber-deep);color:#3a2410;font-weight:600;}
+  .act .k{
+    font-size:10px;font-weight:700;padding:1px 5px;border-radius:5px;
+    background:rgba(58,42,29,.12);color:var(--ink-soft);
+  }
+  .act.active .k{background:rgba(255,255,255,.6);color:#8a4f16;}
+  .act.wide{min-width:120px;}
+
+  /* ---------- 按钮：按关卡显隐 ---------- */
+  .act.hidden{display:none;}
+
+  /* ---------- 物品栏（两格携带道具，可拖拽放置） ---------- */
+  #item-bar{
+    position:absolute;left:16px;bottom:16px;display:flex;gap:10px;padding:8px;z-index:24;
+  }
+  #item-bar.hidden{display:none;}
+  .item-slot{
+    width:60px;height:60px;border-radius:12px;position:relative;
+    border:1px solid var(--line);background:rgba(255,255,255,.5);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    transition:transform .16s, border-color .16s, background .16s;
+  }
+  .item-slot img{width:48px;height:48px;object-fit:contain;pointer-events:none;user-select:none;}
+  .item-slot .slot-name{
+    position:absolute;bottom:0;left:0;right:0;font-size:9.5px;line-height:13px;text-align:center;
+    padding:0 2px;background:rgba(58,42,29,.62);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .item-slot.empty::after{content:'空';font-size:11px;color:var(--ink-soft);}
+  .item-slot.filled{cursor:grab;border-color:var(--amber-deep);background:rgba(255,241,222,.85);}
+  .item-slot.filled:hover{transform:translateY(-2px);}
+  .item-slot.dragging{cursor:grabbing;opacity:.45;}
+
+  /* ---------- 提示 / toast ---------- */
+  #hint{
+    position:absolute;left:50%;top:34%;transform:translate(-50%,-50%) scale(.96);
+    padding:14px 26px;font-size:17px;font-weight:700;color:#241708;
+    max-width:min(760px,88vw);text-align:center;line-height:1.5;
+    border-color:rgba(226,146,44,.55);
+    box-shadow:0 14px 34px rgba(20,12,6,.44), inset 0 1px 0 rgba(255,255,255,.8);
+    opacity:0;transition:opacity .22s, transform .22s;pointer-events:none;
+  }
+  #hint.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  #toast-stack{position:absolute;right:14px;top:120px;display:flex;flex-direction:column;gap:9px;align-items:flex-end;pointer-events:none;z-index:26;}
+  .toast{
+    padding:11px 15px;font-size:14.5px;font-weight:600;color:#2b1d12;max-width:340px;
+    border-color:rgba(58,42,29,.14);
+    box-shadow:0 8px 22px rgba(20,12,6,.36), inset 0 1px 0 rgba(255,255,255,.75);
+    animation:slidein .25s ease-out;
+  }
+  .toast.info{border-left:6px solid #ef9f34;background:linear-gradient(90deg,rgba(255,198,112,.6),rgba(255,252,246,.98) 46%);}
+  .toast.good{border-left:6px solid #5fae46;background:linear-gradient(90deg,rgba(164,214,124,.55),rgba(255,252,246,.98) 46%);}
+  .toast.bad{border-left:6px solid #e0533a;background:linear-gradient(90deg,rgba(242,142,122,.55),rgba(255,252,246,.98) 46%);}
+  @keyframes slidein{from{opacity:0;transform:translateX(14px);}to{opacity:1;transform:none;}}
+
+  /* ---------- 新手提示（居中 · 点击继续） ---------- */
+  #tutorial{
+    position:absolute;inset:0;display:none;place-items:center;z-index:22;
+    background:radial-gradient(58% 58% at 50% 46%,rgba(30,20,14,.5),rgba(16,11,8,.78));
+    backdrop-filter:blur(3px);cursor:pointer;
+  }
+  #tutorial.show{display:grid;}
+  #tut-card{
+    width:min(560px,88vw);padding:26px 30px 22px;text-align:center;
+    max-height:84vh;overflow-y:auto;
+    box-shadow:0 22px 52px rgba(12,7,4,.5), inset 0 1px 0 rgba(255,255,255,.65);
+    animation:tutin .3s cubic-bezier(.2,.9,.3,1.05);
+  }
+  @keyframes tutin{from{opacity:0;transform:translateY(16px) scale(.96);}to{opacity:1;transform:none;}}
+  .tut-badge{
+    display:inline-block;padding:4px 13px;border-radius:999px;font-size:11.5px;font-weight:700;
+    letter-spacing:.16em;color:#3a2410;background:var(--amber);
+    box-shadow:0 3px 10px rgba(227,154,79,.45);
+  }
+  .tut-text{font-size:19px;line-height:1.75;font-weight:600;margin:16px 2px 22px;color:var(--ink);}
+  .tut-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .tut-count{font-size:12px;color:var(--ink-soft);letter-spacing:.02em;}
+  #tut-next{
+    flex:0 0 auto;padding:10px 22px;border-radius:11px;cursor:pointer;
+    border:1px solid var(--amber-deep);background:var(--amber);color:#3a2410;
+    font-size:14px;font-weight:700;transition:.16s;user-select:none;white-space:nowrap;
+  }
+  #tut-next:hover{filter:brightness(1.06);transform:translateY(-1px);}
+
+  /* ---------- 世界锚点标签 ---------- */
+  #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+  /* 世界标签的字号/内边距统一乘以 --ui-label-scale，供调试台整体缩放 */
+  .wlabel{
+    position:absolute;transform:translate(-50%,-100%);
+    font-size:calc(11px * var(--ui-label-scale,1));
+    padding:calc(3px * var(--ui-label-scale,1)) calc(8px * var(--ui-label-scale,1));
+    border-radius:calc(8px * var(--ui-label-scale,1));white-space:nowrap;
+    background:rgba(38,28,20,.78);color:#f6ead9;letter-spacing:.02em;
+    border:1px solid rgba(255,240,220,.18);
+  }
+  .wlabel.soft{background:rgba(246,234,217,.85);color:#4a3524;border-color:rgba(58,42,29,.2);}
+  .wlabel.clue{background:rgba(201,85,59,.92);color:#fff;}
+  .wlabel.good{background:rgba(127,155,98,.92);color:#fff;}
+  .wlabel.angry{background:rgba(196,58,32,.96);color:#fff;border-color:rgba(255,190,120,.85);box-shadow:0 0 10px rgba(255,120,40,.55);}
+  .wlabel.complaint{background:rgba(120,96,64,.9);color:#ffe9c9;}
+  /* 路人抱怨：头顶说话气泡（角色“开口说话”的样式，带向下的小尖角） */
+  .wlabel.speech{
+    background:#fdf6e7;color:#3f2c1c;
+    font-size:calc(11.5px * var(--ui-label-scale,1));font-weight:600;
+    padding:calc(5px * var(--ui-label-scale,1)) calc(9px * var(--ui-label-scale,1));
+    border-radius:calc(10px * var(--ui-label-scale,1));border-color:rgba(58,42,29,.3);
+    box-shadow:0 5px 14px rgba(20,12,6,.3);
+    animation:speechpop .2s ease-out;
+  }
+  .wlabel.speech::after{
+    content:'';position:absolute;left:13px;bottom:-5px;width:9px;height:9px;
+    background:#fdf6e7;transform:rotate(45deg);
+    border-right:1px solid rgba(58,42,29,.3);border-bottom:1px solid rgba(58,42,29,.3);
+  }
+  @keyframes speechpop{
+    from{opacity:0;transform:translate(-50%,-86%) scale(.88);}
+    to{opacity:1;transform:translate(-50%,-100%) scale(1);}
+  }
+
+  /* ---------- 靠近可交互目标时浮在其头顶的按键提示 ---------- */
+  .wlabel.keyhint{
+    display:flex;align-items:center;gap:6px;
+    padding:calc(2px * var(--ui-label-scale,1)) calc(9px * var(--ui-label-scale,1)) calc(2px * var(--ui-label-scale,1)) calc(3px * var(--ui-label-scale,1));
+    border-radius:999px;
+    font-size:calc(11.5px * var(--ui-label-scale,1));font-weight:700;letter-spacing:.02em;
+    background:rgba(227,154,79,.97);color:#3a2410;
+    border:1px solid rgba(200,120,47,.95);
+    box-shadow:0 5px 14px rgba(20,12,6,.42), 0 0 0 3px rgba(227,154,79,.18);
+    animation:keybob 1.3s ease-in-out infinite;
+  }
+  .wlabel.keyhint .key{
+    display:inline-grid;place-items:center;
+    min-width:calc(18px * var(--ui-label-scale,1));height:calc(18px * var(--ui-label-scale,1));
+    padding:0 calc(5px * var(--ui-label-scale,1));
+    border-radius:6px;background:#3a2410;color:#f6ead9;
+    font-size:calc(11px * var(--ui-label-scale,1));font-weight:800;
+  }
+  @keyframes keybob{
+    0%,100%{transform:translate(-50%,-100%);}
+    50%{transform:translate(-50%,-114%);}
+  }
+
+  /* ---------- 界面布局调试：拖动模式（由调试台切换 body.ui-edit） ---------- */
+  body.ui-edit{cursor:crosshair;}
+  body.ui-edit .ui-movable{
+    pointer-events:auto !important;cursor:move;
+    outline:1.5px dashed rgba(201,85,59,.9);outline-offset:3px;
+    min-width:30px;min-height:30px;
+  }
+  /* 拖动时整块可抓，屏蔽内部按钮与道具槽自身的交互 */
+  body.ui-edit .ui-movable *{pointer-events:none !important;}
+  body.ui-edit .ui-dragging{opacity:.85;outline-style:solid;}
+  body.ui-edit #hint{opacity:1;}
+  body.ui-edit #hint:empty::after{content:'提示条';font-size:14px;color:var(--ink-soft);}
+  body.ui-edit #toast-stack:empty::after{content:'toast 区域';font-size:12px;color:var(--ink-soft);}
+
+  /* ---------- 交涉面板 ---------- */
+  #dialog{
+    position:absolute;left:50%;bottom:90px;transform:translateX(-50%) translateY(10px);
+    width:min(560px,92vw);padding:14px 16px;display:none;opacity:0;transition:.2s;
+  }
+  #dialog.show{display:block;opacity:1;transform:translateX(-50%);}
+  #dialog .who{font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
+  #dialog .say{font-size:13.5px;line-height:1.6;margin-bottom:12px;}
+  #dialog .opts{display:flex;flex-direction:column;gap:8px;}
+  .opt{
+    text-align:left;padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13px;
+    border:1px solid var(--line);background:rgba(255,255,255,.6);color:var(--ink);transition:.16s;
+    display:flex;justify-content:space-between;gap:10px;align-items:center;
+  }
+  .opt:hover{background:#fff;border-color:var(--amber);}
+  .opt .cost{font-size:11px;color:var(--ink-soft);}
+  #dlg-opts.locked .opt{opacity:.45;pointer-events:none;}
+
+  /* ---------- 话术对辩（三级 NPC-2，对应策划案 21.5） ---------- */
+  #argue{
+    position:absolute;inset:0;display:none;z-index:21;pointer-events:none;
+    --as:1.4;   /* 对辩整体缩放：三块面板与字号统一按这一项放大/缩小，改这一个值即可整体缩放 */
+    background:radial-gradient(72% 70% at 50% 52%,rgba(24,16,11,.28),rgba(16,11,8,.62));
+  }
+  #argue.show{display:block;}
+  .argue-wrap{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    justify-content:space-between;align-items:center;
+    padding:70px 16px 20px;gap:calc(10px * var(--as));
+  }
+  /* 左右两块向中间靠拢，避免视线在两端来回跳 */
+  .argue-top{width:100%;display:flex;justify-content:center;align-items:flex-start;gap:clamp(24px,4vw,72px);}
+  .argue-side{width:min(44vw,calc(420px * var(--as)));min-height:calc(62px * var(--as));
+    padding:calc(9px * var(--as)) calc(13px * var(--as)) calc(11px * var(--as));}
+  .argue-side.me{text-align:right;}
+  .argue-label{font-size:calc(11px * var(--as));letter-spacing:.14em;color:var(--ink-soft);margin-bottom:calc(4px * var(--as));}
+  .argue-side.me .argue-label{color:var(--amber-deep);}
+  .argue-quip{font-size:calc(14px * var(--as));line-height:1.6;font-weight:600;color:var(--ink);word-break:break-word;}
+  .argue-quip.good{color:#5f7f42;}
+  .argue-quip.bad{color:var(--danger);}
+  .quip-shake{animation:quipshake .34s cubic-bezier(.36,.07,.19,.97) both;}
+  @keyframes quipshake{
+    0%,100%{transform:translateX(0);}
+    15%{transform:translateX(-4px) rotate(-1.2deg);}
+    30%{transform:translateX(4px) rotate(1.2deg);}
+    45%{transform:translateX(-3px) rotate(-.8deg);}
+    60%{transform:translateX(3px) rotate(.8deg);}
+    80%{transform:translateX(-1px);}
+  }
+  /* 牌甩到右侧「你说」面板时，面板轻微回弹，视线自动聚焦到玩家这侧 */
+  .argue-side.me.argue-receive{animation:receivepop .5s cubic-bezier(.2,.9,.3,1.1) both;}
+  @keyframes receivepop{0%{transform:scale(1);}35%{transform:scale(1.035);}100%{transform:scale(1);}}
+  .argue-center{width:min(calc(540px * var(--as)),94vw);padding:calc(11px * var(--as)) calc(16px * var(--as)) calc(13px * var(--as));pointer-events:none;}
+  .argue-meter-row{display:flex;align-items:center;gap:calc(10px * var(--as));position:relative;}
+  .argue-meter-tag{font-size:calc(11px * var(--as));letter-spacing:.14em;color:var(--ink-soft);white-space:nowrap;}
+  .argue-meter{flex:1;height:calc(16px * var(--as));border-radius:calc(9px * var(--as));background:rgba(58,42,29,.16);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.2);}
+  .argue-meter-fill{height:100%;width:50%;border-radius:calc(9px * var(--as));background:linear-gradient(90deg,#c8792f,#e39a4f);transition:width .28s cubic-bezier(.2,.9,.3,1.05);}
+  .argue-meter-fill.good{background:linear-gradient(90deg,#6f9b4e,#a8c46a);}
+  .argue-meter-fill.bad{background:linear-gradient(90deg,#a33f2b,#cf5540);}
+  .argue-meter-num{font-size:calc(16px * var(--as));font-weight:700;min-width:calc(34px * var(--as));text-align:right;color:var(--amber-deep);}
+  .argue-info{display:flex;align-items:center;gap:calc(16px * var(--as));margin-top:calc(9px * var(--as));font-size:calc(12px * var(--as));color:var(--ink-soft);flex-wrap:wrap;}
+  .argue-info b{font-size:calc(14px * var(--as));color:var(--ink);}
+  .argue-info .urgent b{color:var(--danger);}
+  .argue-health{width:calc(120px * var(--as));height:calc(10px * var(--as));border-radius:calc(6px * var(--as));background:rgba(58,42,29,.16);overflow:hidden;}
+  .argue-health-fill{height:100%;width:100%;border-radius:calc(6px * var(--as));background:linear-gradient(90deg,#8fb06a,#c9d47a);transition:width .12s linear;}
+  .argue-health-fill.warn{background:linear-gradient(90deg,#dfa24f,#f0c46a);}
+  .argue-health-fill.danger{background:linear-gradient(90deg,#c9553b,#e0765c);}
+  .argue-ring{margin-left:auto;font-size:calc(11.5px * var(--as));font-weight:700;letter-spacing:.06em;color:#8a4f16;
+    background:rgba(227,154,79,.22);border:1px solid rgba(200,120,47,.5);padding:calc(3px * var(--as)) calc(10px * var(--as));border-radius:999px;white-space:nowrap;}
+  .argue-exit{pointer-events:auto;cursor:pointer;padding:calc(6px * var(--as)) calc(12px * var(--as));border-radius:calc(9px * var(--as));font-size:calc(12px * var(--as));font-weight:600;
+    color:var(--ink);background:rgba(255,255,255,.62);border:1px solid var(--line);transition:.16s;white-space:nowrap;}
+  .argue-exit:hover{background:#fff;border-color:var(--danger);color:var(--danger);}
+  .argue-hand{display:flex;gap:calc(12px * var(--as));align-items:stretch;padding:calc(11px * var(--as)) calc(13px * var(--as));pointer-events:auto;}
+  .argue-card{
+    position:relative;width:min(calc(200px * var(--as)),30vw);min-height:calc(84px * var(--as));
+    padding:calc(12px * var(--as)) calc(13px * var(--as)) calc(13px * var(--as));cursor:pointer;
+    border-radius:calc(12px * var(--as));background:linear-gradient(180deg,rgba(255,250,242,.98),rgba(240,229,212,.98));
+    border:1.5px solid var(--line);transition:.16s;user-select:none;
+    display:flex;flex-direction:column;gap:calc(6px * var(--as));
+  }
+  .argue-card:hover{transform:translateY(-4px);box-shadow:0 10px 22px rgba(20,12,6,.3);}
+  .argue-card .ac-attr{align-self:flex-start;font-size:calc(11px * var(--as));font-weight:800;padding:calc(1px * var(--as)) calc(8px * var(--as));border-radius:calc(6px * var(--as));color:#fff;}
+  .argue-card .ac-text{font-size:calc(12.5px * var(--as));line-height:1.55;color:var(--ink);}
+  .argue-card .ac-key{position:absolute;right:calc(9px * var(--as));top:calc(8px * var(--as));font-size:calc(10px * var(--as));font-weight:800;color:var(--ink-soft);
+    background:rgba(58,42,29,.1);border-radius:calc(5px * var(--as));padding:calc(1px * var(--as)) calc(6px * var(--as));}
+  .argue-card.attr-li{border-color:#4a7fa5;}
+  .argue-card.attr-li .ac-attr{background:#4a7fa5;}
+  .argue-card.attr-qing{border-color:#cf5540;}
+  .argue-card.attr-qing .ac-attr{background:#cf5540;}
+  .argue-card.attr-shi{border-color:#c8792f;}
+  .argue-card.attr-shi .ac-attr{background:#c8792f;}
+  /* 出牌动画：打出的牌从手牌区甩向右侧「你说」面板 */
+  .argue-fly{animation:cardfly .58s cubic-bezier(.32,.72,.36,1) forwards;will-change:transform,opacity;
+    box-shadow:0 16px 32px rgba(20,12,6,.4);}
+  @keyframes cardfly{
+    0%{transform:translate(0,0) scale(1) rotate(0deg);opacity:1;}
+    18%{transform:translate(0,-12px) scale(1.07) rotate(-1.5deg);opacity:1;}
+    100%{transform:translate(var(--fly-x,0px),var(--fly-y,0px)) scale(.24) rotate(-8deg);opacity:0;}
+  }
+  .argue-delta{position:absolute;left:50%;top:-6px;transform:translateX(-50%);
+    font-size:calc(13px * var(--as));font-weight:800;animation:deltapop .9s ease-out forwards;white-space:nowrap;}
+  .argue-delta.up{color:#5f7f42;}
+  .argue-delta.down{color:var(--danger);}
+  @keyframes deltapop{0%{opacity:0;transform:translate(-50%,6px) scale(.8);}25%{opacity:1;transform:translate(-50%,-4px) scale(1.1);}100%{opacity:0;transform:translate(-50%,-26px) scale(1);}}
+  /* 手把手教学面板：停在下中手牌上方，点评/分析都在这张卡里 */
+  .argue-tut{
+    position:absolute;left:50%;bottom:calc(136px * var(--as));transform:translateX(-50%);
+    width:min(calc(700px * var(--as)),92vw);padding:calc(12px * var(--as)) calc(16px * var(--as));
+    z-index:9;/* 必须高于 #argue-mask(7)，否则「下一步」按钮会被遮罩挡住而点不动 */
+    display:none;flex-direction:column;
+    background:linear-gradient(180deg,rgba(255,252,246,.99),rgba(244,234,218,.99));
+    border:1.5px solid rgba(200,120,47,.55);box-shadow:0 16px 36px rgba(20,12,6,.36);
+    pointer-events:auto;
+  }
+  .argue-tut.show{display:flex;}
+  .argue-tut-text{font-size:calc(13.5px * var(--as));line-height:1.66;color:var(--ink);font-weight:600;}
+  .argue-tut-text b{color:var(--amber-deep);}
+  .argue-tut-analysis{display:none;flex-direction:column;gap:calc(5px * var(--as));margin-top:calc(9px * var(--as));}
+  .argue-tut-analysis.show{display:flex;}
+  .ta-head{font-size:calc(12.5px * var(--as));font-weight:700;color:var(--ink);}
+  .ta-head b{color:var(--amber-deep);}
+  .ta-rows{display:flex;flex-direction:column;gap:calc(4px * var(--as));}
+  .ta-row{display:flex;align-items:center;gap:calc(8px * var(--as));padding:calc(5px * var(--as)) calc(9px * var(--as));border-radius:calc(8px * var(--as));
+    background:rgba(58,42,29,.06);font-size:calc(12px * var(--as));}
+  .ta-row.best{background:rgba(111,155,78,.2);box-shadow:inset 0 0 0 1.5px rgba(111,155,78,.6);}
+  .ta-row.lose{opacity:.6;}
+  .ta-idx{width:calc(16px * var(--as));text-align:center;font-weight:800;color:var(--ink-soft);}
+  .ta-attr{padding:0 calc(7px * var(--as));border-radius:calc(5px * var(--as));color:#fff;font-weight:800;font-size:calc(11px * var(--as));}
+  .ta-attr.attr-li{background:#4a7fa5;}
+  .ta-attr.attr-qing{background:#cf5540;}
+  .ta-attr.attr-shi{background:#c8792f;}
+  .ta-rel{flex:1;color:var(--ink-soft);}
+  .ta-num{font-weight:800;color:var(--ink-soft);}
+  .ta-row.win .ta-num{color:#5f7f42;}
+  .ta-row.lose .ta-num{color:var(--danger);}
+  .argue-tut-next{
+    margin-top:calc(10px * var(--as));align-self:flex-end;cursor:pointer;padding:calc(7px * var(--as)) calc(16px * var(--as));border-radius:calc(9px * var(--as));
+    font-size:calc(12.5px * var(--as));font-weight:700;color:#fff;text-align:center;
+    background:linear-gradient(180deg,#d98a3a,#c8792f);box-shadow:0 6px 14px rgba(200,120,47,.32);
+    transition:.16s;
+  }
+  .argue-tut-next:hover{filter:brightness(1.07);}
+  /* 教学面板的位置：目标在上半屏时停在下中，目标在下方（手牌）时改停到顶部 */
+  .argue-tut.dock-top{bottom:auto;top:96px;}
+  /* 聚焦式引导层：四条遮罩条 + 光圈 + 箭头
+     遮罩条用 backdrop-filter 把「没被教到」的区域变灰压暗，并吃掉点击（不可点击）；
+     光圈/箭头处的镂空让被教区域保持原色并透出可点击（pointer-events:none） */
+  #argue-mask{position:absolute;inset:0;z-index:7;display:none;pointer-events:none;}
+  #argue-mask.show{display:block;}
+  .am-strip{position:absolute;pointer-events:auto;background:rgba(16,11,8,.42);
+    backdrop-filter:grayscale(1) brightness(.55);-webkit-backdrop-filter:grayscale(1) brightness(.55);}
+  .am-spot{position:absolute;pointer-events:none;border:2px solid rgba(227,154,79,.95);border-radius:14px;
+    animation:spotpulse 1.15s ease-in-out infinite;}
+  @keyframes spotpulse{
+    0%,100%{box-shadow:0 0 0 4px rgba(227,154,79,.34),0 0 22px 5px rgba(227,154,79,.5);}
+    50%{box-shadow:0 0 0 4px rgba(227,154,79,.12),0 0 10px 2px rgba(227,154,79,.2);}
+  }
+  .am-arrow{position:absolute;pointer-events:none;font-size:26px;line-height:1;transform:translateX(-50%);
+    color:#f0b96a;text-shadow:0 3px 10px rgba(0,0,0,.55);}
+  .am-arrow.down{animation:arrowdown 1s ease-in-out infinite;}
+  .am-arrow.up{animation:arrowup 1s ease-in-out infinite;}
+  @keyframes arrowdown{0%,100%{margin-top:-5px;}50%{margin-top:5px;}}
+  @keyframes arrowup{0%,100%{margin-top:5px;}50%{margin-top:-5px;}}
+  .argue-card.tut-recommend{box-shadow:0 0 0 3px rgba(111,155,78,.85),0 0 22px rgba(111,155,78,.45);transform:translateY(-4px);}
+  #argue.shake{animation:argueshake .42s cubic-bezier(.36,.07,.19,.97) both;}
+  @keyframes argueshake{
+    0%,100%{transform:translate(0,0);}
+    12%{transform:translate(-6px,3px);}
+    28%{transform:translate(6px,-3px);}
+    44%{transform:translate(-4px,2px);}
+    60%{transform:translate(4px,-2px);}
+    78%{transform:translate(-2px,1px);}
+  }
+
+  /* ---------- 辅助装备商店 ---------- */
+  #shop{
+    position:absolute;inset:0;display:none;place-items:center;z-index:24;
+    background:radial-gradient(60% 60% at 50% 45%,rgba(30,20,14,.5),rgba(18,12,9,.8));
+    backdrop-filter:blur(3px);
+  }
+  #shop.show{display:grid;}
+  #shop-card{width:min(680px,94vw);max-height:86vh;display:flex;flex-direction:column;padding:20px 22px;}
+  #shop-head{display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+  #shop-head h2{margin:0;font-size:18px;flex:1;}
+  #shop-head .sub{display:block;font-size:11.5px;color:var(--ink-soft);font-weight:400;margin-top:3px;letter-spacing:0;}
+  .shop-pts{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;}
+  .shop-pts b{font-size:17px;color:var(--amber-deep);}
+  #shop-list{flex:1;overflow:auto;padding-top:12px;display:flex;flex-direction:column;gap:9px;}
+  .shop-item{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;
+    background:rgba(255,255,255,.55);border:1px solid var(--line);}
+  .shop-item .si-main{flex:1;min-width:0;}
+  .shop-item .si-name{font-size:14px;font-weight:600;}
+  .shop-item .si-desc{font-size:11.5px;color:var(--ink-soft);line-height:1.55;margin-top:3px;}
+  .shop-item .si-side{text-align:right;white-space:nowrap;}
+  .shop-item .si-price{font-size:13px;font-weight:600;color:var(--amber-deep);}
+  .shop-item .si-owned{font-size:10.5px;color:var(--ok);margin-top:2px;}
+  .shop-item .si-buy{flex:0 0 auto;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;
+    border:1px solid var(--amber-deep);background:var(--amber);color:#3a2410;cursor:pointer;transition:.16s;}
+  .shop-item .si-buy:hover{filter:brightness(1.06);transform:translateY(-1px);}
+  .shop-item .si-buy.disabled{background:rgba(58,42,29,.12);border-color:var(--line);color:var(--ink-soft);cursor:not-allowed;}
+  .shop-item .si-carry{flex:0 0 auto;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;
+    border:1px solid var(--line);background:rgba(255,255,255,.7);color:var(--ink);cursor:pointer;transition:.16s;}
+  .shop-item .si-carry:hover{border-color:var(--amber-deep);}
+  .shop-item .si-carry.on{background:var(--amber);border-color:var(--amber-deep);color:#3a2410;}
+  .shop-item .si-carry.disabled{opacity:.45;cursor:not-allowed;}
+  .shop-item .si-tag{flex:0 0 auto;font-size:11.5px;color:var(--ink-soft);padding:0 6px;}
+  .shop-item.picked{outline:2px solid rgba(227,154,79,.85);outline-offset:-1px;}
+
+  /* 出击准备：底部携带槽 + 开始按钮 */
+  #shop-foot{display:none;align-items:center;gap:14px;padding-top:12px;margin-top:8px;border-top:1px solid var(--line);}
+  #shop-foot.show{display:flex;}
+  #shop-carry{flex:1;display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-soft);}
+  #carry-slots{display:flex;gap:8px;}
+  .carry-slot{min-width:104px;padding:7px 12px;border-radius:10px;font-size:12.5px;font-weight:600;
+    border:1px dashed var(--line);color:var(--ink-soft);text-align:center;}
+  .carry-slot.filled{border-style:solid;border-color:var(--amber-deep);background:rgba(227,154,79,.16);color:var(--ink);}
+  #shop-start{flex:0 0 auto;padding:11px 22px;font-size:14px;font-weight:700;border-radius:11px;
+    border:1px solid var(--amber-deep);background:var(--amber);color:#3a2410;cursor:pointer;transition:.16s;}
+  #shop-start:hover{filter:brightness(1.06);transform:translateY(-1px);}
+
+  /* ---------- 结算 ---------- */
+  #overlay{
+    position:absolute;inset:0;display:none;place-items:center;
+    background:radial-gradient(60% 60% at 50% 45%,rgba(30,20,14,.55),rgba(18,12,9,.82));
+    backdrop-filter:blur(3px);z-index:20;
+  }
+  #overlay.show{display:grid;}
+  #result{width:min(520px,92vw);padding:24px 26px;}
+  #result h2{margin:0 0 4px;font-size:22px;}
+  #result .flavor{font-size:13px;color:var(--ink-soft);line-height:1.7;margin:6px 0 16px;}
+  #result .grades{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:18px;}
+  .grade{display:flex;justify-content:space-between;font-size:12.5px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.5);border:1px solid var(--line);}
+  .grade b{color:var(--amber-deep);}
+  /* 本关积分：单独一行，字号更大、颜色更鲜艳 */
+  #result .res-points{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    margin:0 0 18px;padding:12px 16px;border-radius:13px;
+    background:linear-gradient(96deg,rgba(255,178,72,.32),rgba(255,196,110,.12));
+    border:1px solid rgba(226,146,44,.62);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.5);
+  }
+  #result .res-points .rp-label{font-size:15px;font-weight:700;color:#8a4b16;letter-spacing:.06em;}
+  #result .res-points .rp-right{display:flex;align-items:baseline;gap:10px;}
+  #result .res-points .rp-value{
+    font-size:34px;line-height:1;font-weight:800;color:#ef6f0e;
+    text-shadow:0 2px 0 rgba(255,255,255,.55),0 0 18px rgba(239,111,14,.35);
+  }
+  #result .res-points .rp-total{font-size:13px;font-weight:600;color:#a1662a;}
+  #result .row{display:flex;gap:10px;}
+  .btn{
+    flex:1;padding:11px;border-radius:11px;border:1px solid var(--amber-deep);cursor:pointer;
+    background:var(--amber);color:#3a2410;font-size:14px;font-weight:600;transition:.16s;
+  }
+  .btn:hover{filter:brightness(1.06);transform:translateY(-1px);}
+  .btn.ghost{background:rgba(255,255,255,.55);color:var(--ink);border-color:var(--line);}
+
+  /* ---------- 调试面板 ---------- */
+  #debug{
+    position:absolute;right:14px;bottom:14px;width:310px;padding:12px 13px;
+    display:none;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.65;
+    max-height:52vh;overflow:auto;
+  }
+  #debug.show{display:block;}
+  #debug h3{margin:0 0 8px;font-size:11.5px;letter-spacing:.1em;color:var(--ink-soft);font-weight:600;}
+  #debug .sec{margin-bottom:9px;padding-bottom:8px;border-bottom:1px dashed var(--line);}
+  #debug .sec:last-child{border:none;margin:0;padding:0;}
+  #debug table{width:100%;border-collapse:collapse;}
+  #debug td{padding:1px 0;vertical-align:top;}
+  #debug td:last-child{text-align:right;color:var(--amber-deep);white-space:nowrap;}
+  .pill{padding:0 5px;border-radius:4px;background:rgba(58,42,29,.1);}
+
+  /* ---------- 开发者数值调试台 ---------- */
+  #btn-dev{margin-left:6px;}
+  #btn-dev .k{background:rgba(201,85,59,.16);color:var(--danger);}
+  #dev-panel{
+    position:absolute;top:0;right:0;bottom:0;width:344px;z-index:18;
+    display:flex;flex-direction:column;
+    background:linear-gradient(180deg,rgba(255,247,236,.98),rgba(236,221,201,.98));
+    border-left:1px solid var(--line);
+    box-shadow:-14px 0 34px rgba(20,12,6,.34);
+    transform:translateX(102%);transition:transform .26s ease;
+    font-size:12px;
+  }
+  #dev-panel.show{transform:none;}
+  #dev-head{
+    display:flex;align-items:center;gap:8px;padding:12px 14px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  #dev-head h2{margin:0;font-size:14px;flex:1;}
+  #dev-head .sub{display:block;font-size:10.5px;color:var(--ink-soft);font-weight:400;margin-top:2px;letter-spacing:0;}
+  .dev-btn{
+    padding:6px 10px;border-radius:9px;cursor:pointer;font-size:11.5px;
+    border:1px solid var(--line);background:rgba(255,255,255,.6);color:var(--ink);
+    transition:.16s;user-select:none;white-space:nowrap;
+  }
+  .dev-btn:hover{background:#fff;border-color:var(--amber);}
+  #dev-body{flex:1;overflow:auto;padding:6px 14px 24px;}
+  #dev-body::-webkit-scrollbar{width:9px;}
+  #dev-body::-webkit-scrollbar-thumb{background:rgba(58,42,29,.22);border-radius:5px;}
+  .dev-group{padding:6px 0 8px;border-bottom:1px dashed var(--line);}
+  .dev-group > h4{
+    margin:6px 0 4px;font-size:11.5px;font-weight:700;color:var(--amber-deep);
+    letter-spacing:.02em;display:flex;align-items:center;gap:6px;cursor:pointer;
+  }
+  .dev-group > h4::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--amber);}
+  .dev-group.collapsed .dev-rows{display:none;}
+  .dev-group > h4 .cnt{margin-left:auto;font-size:10px;color:var(--ink-soft);font-weight:400;}
+  .dev-row{display:flex;flex-direction:column;gap:4px;padding:5px 0;}
+  .dev-row .top{display:flex;align-items:baseline;gap:8px;}
+  .dev-row .nm{font-size:12px;}
+  .dev-row .pth{margin-left:auto;font-size:9.5px;color:var(--ink-soft);font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .dev-ctrl{display:flex;align-items:center;gap:8px;}
+  .dev-ctrl input[type=range]{
+    flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;
+    background:rgba(58,42,29,.16);outline:none;cursor:pointer;
+  }
+  .dev-ctrl input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--amber);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:grab;
+  }
+  .dev-ctrl input[type=number]{
+    width:74px;padding:4px 6px;border-radius:7px;border:1px solid var(--line);
+    background:rgba(255,255,255,.85);color:var(--ink);font-size:11.5px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;text-align:right;
+  }
+  .dev-ctrl input[type=number]:focus,.dev-ctrl select:focus{outline:2px solid var(--amber);outline-offset:-1px;}
+  .dev-ctrl select{
+    flex:1;padding:4px 6px;border-radius:7px;border:1px solid var(--line);
+    background:rgba(255,255,255,.85);color:var(--ink);font-size:11.5px;
+  }
+  .dev-ctrl input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber);cursor:pointer;}
+  .dev-list{display:flex;gap:6px;flex-wrap:wrap;}
+  .dev-list label{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink-soft);}
+  .dev-list input[type=number]{width:60px;}
+  /* 关卡调试：动作按钮组 */
+  .dev-actions{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 2px;}
+  .dev-btn.cur{background:var(--amber);border-color:var(--amber);color:#fff;font-weight:700;}
+  .dev-info{font-size:11px;color:var(--ink-soft);line-height:1.6;padding:2px 0;}
+
+  /* ---------- 调试台：两级分类折叠 ---------- */
+  .dev-cat-sec{padding:2px 0 4px;}
+  .dev-cat-sec + .dev-cat-sec{border-top:1px solid var(--line);margin-top:4px;padding-top:8px;}
+  .dev-cat{margin:0 0 2px;font-size:12.5px;font-weight:700;color:var(--ink);letter-spacing:.03em;
+    display:flex;align-items:center;gap:7px;cursor:pointer;padding:5px 0;user-select:none;}
+  .dev-cat::before{content:'';width:0;height:0;border-left:5px solid var(--amber-deep);
+    border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s;}
+  .dev-cat-sec.collapsed .dev-cat::before{transform:rotate(-90deg);}
+  .dev-cat .cnt{margin-left:auto;font-size:10px;color:var(--ink-soft);font-weight:400;}
+  .dev-cat-sec.collapsed .dev-cat-body{display:none;}
+  .dev-cat-body{padding-left:2px;}
+  .dev-group > h4::before{content:'';width:0;height:0;border-left:5px solid var(--amber);
+    border-top:4px solid transparent;border-bottom:4px solid transparent;border-radius:0;background:none;transition:transform .15s;}
+  .dev-group.collapsed > h4::before{transform:rotate(-90deg);}
+
+  /* ---------- 启动失败兜底 ---------- */
+  #boot-error{
+    position:absolute;inset:0;display:none;place-items:center;text-align:center;z-index:40;
+    background:var(--bg);color:#e8d5b8;
+  }
+  #boot-error.show{display:grid;}
+  #boot-error .inner{max-width:520px;padding:28px;line-height:1.8;font-size:13.5px;}
+  #boot-error code{background:rgba(255,255,255,.1);padding:2px 7px;border-radius:6px;color:#f0c079;}
+  #boot-error h2{font-size:18px;margin:0 0 10px;color:#f3e6d2;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="labels"></div>
+
+<div id="hud-top">
+  <div id="level-card" class="card">
+    <div class="label-mini">关卡</div>
+    <h1 id="level-title">—</h1>
+    <div class="sub" id="level-sub">—</div>
+    <div id="level-objectives"></div>
+  </div>
+  <div id="status-card" class="card">
+    <div class="stat">
+      <span class="label-mini">健康</span>
+      <div id="health-wrap"><div id="health-track"><div id="health-fill"></div><div id="health-num">100</div></div></div>
+      <span id="exposure-tag">吸烟区外 · 暴露 0%</span>
+    </div>
+    <div class="stat">
+      <span class="label-mini">情绪</span>
+      <div id="anger-wrap"><div id="anger-track"><div id="anger-fill"></div><div id="anger-num">0</div></div></div>
+      <span id="anger-tag">冷静</span>
+    </div>
+    <div class="stat"><span class="label-mini">已劝导</span><span class="v" id="stat-solved">0 / 0</span></div>
+    <div class="stat"><span class="label-mini">通风</span><span class="v" id="stat-vent">—</span></div>
+    <div class="stat"><span class="label-mini">积分</span><span class="v" id="stat-points">0</span></div>
+    <div class="stat"><span class="label-mini">用时</span><span class="v" id="stat-time">00:00</span></div>
+  </div>
+</div>
+
+<div id="hud-bottom" class="card">
+  <div class="act hidden" id="btn-record"><span class="k">T</span>记录违规</div>
+  <div class="act hidden" id="btn-investigate"><span class="k">C</span>调查根源</div>
+  <div class="act" id="btn-shop"><span class="k">B</span>商店</div>
+  <div class="act" id="btn-dev"><span class="k">DEV</span>开发者</div>
+</div>
+
+<!-- 物品栏：显示本关携带的道具（可拖拽到地面放置） -->
+<div id="item-bar" class="card hidden"></div>
+
+<div id="dev-panel">
+  <div id="dev-head">
+    <h2>数值调试台<span class="sub">拖动即时生效 · 改动写入 CONFIG</span></h2>
+    <div class="dev-btn" id="dev-reset">复位</div>
+    <div class="dev-btn" id="dev-close">关闭</div>
+  </div>
+  <div id="dev-body"></div>
+</div>
+
+<div id="hint" class="card"></div>
+<div id="toast-stack"></div>
+
+<div id="dialog" class="card">
+  <div class="who" id="dlg-who">对方</div>
+  <div class="say" id="dlg-say">…</div>
+  <div class="opts" id="dlg-opts"></div>
+</div>
+
+<!-- 话术对辩：上左=NPC 话术，上右=玩家话术，中=气势条/倒计时/健康，下中=玩家手牌 -->
+<div id="argue">
+  <div class="argue-wrap">
+    <div class="argue-top">
+      <div class="argue-side npc card">
+        <div class="argue-label">他说</div>
+        <div class="argue-quip" id="argue-npc-said">…</div>
+      </div>
+      <div class="argue-side me card">
+        <div class="argue-label">你说</div>
+        <div class="argue-quip" id="argue-player-said">…</div>
+      </div>
+    </div>
+    <div class="argue-center card">
+      <div class="argue-meter-row">
+        <span class="argue-meter-tag">气势</span>
+        <div class="argue-meter"><div class="argue-meter-fill" id="argue-meter-fill"></div></div>
+        <span class="argue-meter-num" id="argue-meter-num">50</span>
+      </div>
+      <div class="argue-info">
+        <span>本回合 <b id="argue-round-time">6.0</b>s</span>
+        <span>整场 <b id="argue-total-time">40</b>s</span>
+        <span>健康 <b id="argue-health-num">100</b></span>
+        <div class="argue-health"><div class="argue-health-fill" id="argue-health-fill"></div></div>
+        <span class="argue-ring">理克情 · 情克势 · 势克理</span>
+        <div class="argue-exit" id="argue-exit">退出争论 (Esc)</div>
+      </div>
+    </div>
+    <div class="argue-hand card" id="argue-hand"></div>
+    <!-- 聚焦式引导遮罩：四边压暗变灰并挡住点击，光圈/箭头处镂空 -->
+    <div id="argue-mask">
+      <div class="am-strip am-top"></div>
+      <div class="am-strip am-bottom"></div>
+      <div class="am-strip am-left"></div>
+      <div class="am-strip am-right"></div>
+      <div class="am-spot"></div>
+      <div class="am-arrow down">▼</div>
+    </div>
+    <!-- 手把手教学：提示文案 + 头两次出牌的属性分析 + 下一步按钮 -->
+    <div class="argue-tut card" id="argue-tut">
+      <div class="argue-tut-text" id="argue-tut-text"></div>
+      <div class="argue-tut-analysis" id="argue-tut-analysis"></div>
+      <div class="argue-tut-next" id="argue-tut-next">下一步 ▸</div>
+    </div>
+  </div>
+</div>
+
+<div id="debug" class="card"></div>
+
+<div id="shop">
+  <div id="shop-card" class="card">
+    <div id="shop-head">
+      <h2><span id="shop-title-text">辅助装备商店</span><span class="sub" id="shop-sub">买装备只是多一种解法，不买也一样能通关</span></h2>
+      <div class="shop-pts">当前积分 <b id="shop-points">0</b></div>
+      <div class="dev-btn" id="shop-close">关闭 (B)</div>
+    </div>
+    <div id="shop-list"></div>
+    <div id="shop-foot">
+      <div id="shop-carry">
+        <span>已携带 <b id="carry-count">0 / 2</b></span>
+        <div id="carry-slots"></div>
+      </div>
+      <button class="btn" id="shop-start">开始关卡</button>
+    </div>
+  </div>
+</div>
+
+<div id="tutorial">
+  <div id="tut-card" class="card">
+    <div class="tut-badge">新手提示</div>
+    <div class="tut-text" id="tut-text">…</div>
+    <div class="tut-foot">
+      <span class="tut-count" id="tut-count"></span>
+      <div id="tut-next">继续 ▸</div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="result" class="card">
+    <h2 id="res-title">—</h2>
+    <div class="flavor" id="res-flavor">—</div>
+    <div class="grades" id="res-grades"></div>
+    <div class="res-points">
+      <span class="rp-label">本关积分</span>
+      <div class="rp-right">
+        <b class="rp-value" id="res-points">+0</b>
+        <span class="rp-total" id="res-total">累计 0</span>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn" id="res-next">继续</button>
+      <button class="btn ghost" id="res-retry">重试本关</button>
+    </div>
+  </div>
+</div>
+
+<div id="boot-error">
+  <div class="inner">
+    <h2>需要本地服务器打开</h2>
+    本项目使用 ES Module 加载，直接双击 <code>index.html</code> 会被浏览器同源策略拦截。<br>
+    请在项目目录下执行：<br>
+    <code>python -m http.server 8080</code><br>
+    然后访问 <code>http://localhost:8080</code>（或直接双击 <code>start.bat</code>）。
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js"
+  }
+}
+</script>
+<script type="module">
+  // 若 4 秒内未启动成功，提示用户改用本地服务器
+  window.__GAME_BOOTED__ = false;
+  setTimeout(() => {
+    if (!window.__GAME_BOOTED__) {
+      document.getElementById('boot-error').classList.add('show');
+    }
+  }, 4000);
+</script>
+<script type="module" src="./src/game.js"></script>
+</body>
+</html>

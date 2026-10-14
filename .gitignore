@@ -1,0 +1,15 @@
+# 开发用参考图，非运行时资源
+参考图/
+
+# 编辑器 / AI 工具配置
+.trae/
+.vscode/
+
+# 依赖与缓存
+node_modules/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
